@@ -1,0 +1,313 @@
+1. 데비안 LIVE 이미지를 다운 받아 아래 위치에 압축을 푼다.
+# cp filesystem.squashfs
+# mount ./filesystem.squashfs /mnt/
+# cd /mnt/
+
+* 작업 디렉토리를 만들고..
+# mkdir -p live_boot/chroot && cd live_boot/chroot
+# cp -rapdv /mnt/*  /data/live_boot/chroot
+
+2. chroot 환경 구성
+# cp /etc/resolv.conf ./chroot/etc/  .. 환경설정 후 진행
+
+# chroot chroot
+mount none -t proc /proc && \
+mount none -t sysfs /sys && \
+mount none -t devpts /dev/pts && \
+export HOME=/root && \
+export LC_ALL=C && \
+apt-get update
+
+3. 폰트 설치 및 한글 환경 구성
+# apt-get install nanum* ibus-hangul im-config
+# dpkg-reconfigure locales 
+  -> ko-UTF-8 선택, default로 선택(x윈도우 화면 한글로 출력하게함)
+
+* USB 파일 중 live.cfg 파일을 수정..부팅환경을 한글로..
+append initrd=/live/initrd1 boot=live locales=ko_KR.UTF-8 quiet splash ---
+
+4. 추가 키지 설치
+    - ntp
+    - rdate
+    - gdebi
+    - gparted
+    - alacarte
+    - blueman
+    - clementine  
+    - gvfs.backend
+    - filezilla
+    - transmission
+    - simple-scan
+    - git
+    - software-properties-common  dirmngr
+    - galculator
+    - kazam
+    - tree
+    - screenfetch
+    - comix 
+    - squashfs.tools
+    - conky-all
+    - plymouth
+    - pciutils
+    - comixcursors-righthanded
+    - cups
+    - smbclient
+    - ibus-gtk ibus-gtk3  .. 한글 띄어서지는 에러 수정
+    - axel
+    - pdftk
+    - pdfchain
+    - shotwell
+    - digikam
+    - xautolock
+
+  * visual studio code deb 파일로 설치
+  * conky-manager 는 deb 파일로 설치
+  * plymouth theme 설정
+    # /usr/share/plymouth/themes/  .. 테마들 
+    # plymouth-set-default-theme  .. 현재 테마 확인
+    # plymouth-set-default-theme softwaves  .. "softwaves" 테마로 설정
+  * VLC root 로 실행하기
+    # sed -i 's/geteuid/getppid/g' /usr/bin/vlc 
+
+5. chroot 환경 벗어나기
+# passwd root
+apt-get clean && \
+umount -lf /proc && \
+umount -lf /sys && \
+umount -lf /dev/pts
+exit
+
+# umount -lf chroot/dev
+
+6. 데스크탑 환경을 구성한다.
+* lightdm 환경 설정 -- user로 Auto 로그인(..난 root를 사용/기본 원칙에 어긋남)
+# vi chroot/etc/lightdm/lightdm.conf
+..
+autologin-user=root
+autologin-user-timeout=0   .. 수정
+
+# vi chroot/etc/pam.d/lightdm-autologin
+.. 11번째 줄"!=root" 있는.. 전체 줄을 "#" 주석 처리
+
+
+** 여기 서부터는 USB를 persistence 모드로 기동/환경을 overwriter 형태로 구성
+7. persistence 모드로 부팅 및 변경된 파일 ..위의 chroot 디렉토리에 overwrite..진행
+* X윈도우 환경을 구성..
+
+* 시간 설정
+# dpkg-reconfigure tzdata
+  -> Asia > seoul
+
+* 하드웨어 시간 설정이 틀어짐을 방지
+# hwclock --systohc --localtime
+# timedatectl --> 확인
+
+* chroot 파일의 "/media" 폴더 안에 usb mount 정보 등을 모두 지운다.
+.. 지우지 않는다면,  
+.. mksquashfs ~ 진행시.. Unrecognised xattr prefix system.posix_acl_access 메세지 발생함.
+
+* root로 자동 로그인 환경에서는 sound 데몬이 정상 동작 안하는 문제 발생
+.. xfce 환경에서 자동시작 프로그램 등록
+/usr/bin/pulseaudio -D
+
+7. 기타 참조
+Icon 저장 위치
+- /usr/share/icons
+
+wall paper 저장 위치
+- /usr/share/xfce4/backdrops
+
+history 기록 삭제
+- .bash_history 파일 null copy
+- history -c
+
+8. squashfs 만들기
+# cd live_boot
+# mkdir -p image/{live,isolinux}
+# mksquashfs chroot image/live/filesystem.squashfs -e boot
+
+* 참조 
+* live iso 파일 이미지(vmlinuz, initrd)를 copy 하는게 빠름 
+# cp chroot/boot/vmlinuz-버전 image/live/vmlinuz1 && \
+# cp chroot/boot/initrd.img-버전 image/live/initrd1
+
+* 만들어진 파일을 활용합시다.
+vi image/isolinux/isolinux.cfg 
+----------------------------------------------------------------
+UI menu.c32
+
+prompt 0
+menu title Debian Live
+
+timeout 100
+
+label Debian Live
+menu label ^Debian Live
+menu default
+kernel /live/vmlinuz1
+append initrd=/live/initrd1 boot=live
+
+label Persistence
+menu label ^Persistence Debian Live
+kernel /live/vmlinuz1
+append initrd=/live/initrd1 boot=live persistence
+----------------------------------------------------------------
+* 부팅화면에 그림을 넣을 경우, 라이브 CD 배포판 파일 참조 / splash.png, VESA 640x480 으로 부팅함.
+
+cp /usr/lib/ISOLINUX/isolinux.bin image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/hdt.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/ldlinux.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/libcom32.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/libutil.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/vesamenu.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/menu.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/libmenu.c32 image/isolinux/ && \
+cp /usr/lib/syslinux/modules/bios/libgpl.c32 image/isolinux/ && \
+cp /usr/share/misc/pci.ids image/isolinux/ && \
+cp /boot/memtest86+.bin image/live/memtest
+
+* iso 파일 만들기
+cd image && genisoimage -rational-rock -volid "RollOS" -cache-inodes -joliet -full-iso9660-filenames -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -output ../rollos.iso . && cd ..
+
+
+15. Live USB 부팅, sdc 라고.. 인식 되을때... 
+
+syslinux -i /dev/sdc1
+* NTFS 일 경우 에러 발생
+-- apt-get install extlinux
+-- extlinux -i /media/root/ROLL 파일시스템
+
+dd if=/usr/lib/syslinux/mbr/mbr.bin of=/dev/sdc conv=notrunc bs=440 count=1
+
+mkdir /mnt/usb
+mount /dev/sdc1 /mnt/usb
+
+cp /usr/lib/syslinux/modules/bios/menu.c32 /mnt/usb/ && \
+cp /usr/lib/syslinux/modules/bios/hdt.c32 /mnt/usb/ && \
+cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /mnt/usb/ && \
+cp /usr/lib/syslinux/modules/bios/libcom32.c32 /mnt/usb/ && \
+cp /usr/lib/syslinux/modules/bios/libutil.c32 /mnt/usb/ && \
+cp /boot/memtest86+.bin /mnt/usb/memtest && \
+cp image/isolinux/isolinux.cfg /mnt/usb/syslinux.cfg && \
+cp /usr/share/misc/pci.ids /mnt/usb/ && \
+rsync -rv image/live /mnt/usb/
+
+umount /mnt/usb
+
+mkdir /mnt/persistence
+mount /dev/sdc2 /mnt/persistence
+
+16. Persistence 구성
+  1) USB 를 Fdisk 등을 사용하여, 2개의 파티션으로 나눔
+  2) live 용 파티션은 FAT32 포맷
+     persistence 용은 ext4 포맷
+  3) live 용에는 "15번"과 같이.. 만듬
+     persistence 파티션에는 "persistence.conf" 파일을 만듬.. 실행권한 755 로 ,,중요
+----------------------------------------------------------------
+     # vi persistence.conf
+       /  union
+----------------------------------------------------------------
+* 참조
+  - / 만 설정 했을시.. USB의 I/O 부하가 급속하게 증가.. 대표적으로 YouTube 등 동영상을 볼때 끊김 발생
+  - /root
+    /home
+    /usr
+    /var .. 등 분할 해서 설정시 USB의 I/O 부하를 줄일수 있음.
+ 
+* persis~의 단점은 매체의 I/O를 증가 시킨다는 것이며, 
+  read-only 의 단점은 외부 매체를 자동 mount 하지 못한다는 것.. 시작시 자동 script 작성이 필요 
+----------------------------------------------------------------
+  4) 부팅시 메뉴에서 persistence 를 선택하면, ext4로 부팅되며, 변경 내용이 저장됨
+     -- 아니면, 부팅시 TAB > boot persistence  으로도 가능함.
+
+---------------------------------------------------------------- 예전방식
+8. boot splash 변경
+-1. live 디렉토리에
+   initrd1 파일을 임의 디렉토리에 압축 풀고,
+# mkdir temp $$ cd temp
+# gunzip -c ./initrd1 |cpio -i
+
+-2. 풀린 파일안에 plymouth 를 찾아....
+# cd ./usr/share/plymouth/themes/lines  ... 참조 파일을 수정한다.
+
+-3. 다시 압축후 시동 USB 의 live 디렉토리에 initrd 파일과 교체한다.
+# find . |cpio -H newc -o |gzip -9 > /임의/initrd1-new
+
+* OS를 종료시 splash 화면 변경은 
+cd ./usr/share/plymouth/themes/lines ..수정
+----------------------------------------------------------------
+
+* 참조
+* conky 설치
+# apt-get install conky-all
+
+* conky-manager.. deb 파일로 설치
+* 작성한 roll conky 파일을..copy
+# cd /root/.conky
+# cd ROConky .. 만든 디렉토리에 conky 파일 설치
+
+9. 메뉴 변경하기
+9-1. 메뉴 한글 이름으로 변경
+# cd /usr/share/applications/
+.. 안에 있는 파일들을 에디터로 수정하면 됨
+
+9-2. 다음으로 열기 중복 등 버그에 관한..
+# cd /usr/share/applications/
+.. 중복 프로그램 파일 중 1개 삭제 / 대표적인 프로그램 --> ImageMagick
+
+9-3. 메뉴에서 프로그램 목록 안보이게
+# cd /root/.config/menus/
+# vi ./xfce-applications.menu
+..내용 중 안보이게 할 프로그램을 구문에 맞게 "Exclude" 처리..
+
+* 참조
+- 리브레오피스 한글 설정 : 도구>옵션>리브레라이터>기본글꼴(동양권) 에서 나눔고딕으로 변경 
+- 연결 프로그램 확인 및 변경 : 설정>설정관리자>MIME형식 편집기 에서 설정 변경
+
+* kodi 한글...
+# cd /usr/share/kodi/media/Fonts
+# mv arial.ttf arial.ttf.old
+# ln -s /usr/share/fonts/truetype/nanum/NanumGothic.ttf arial.ttf
+
+.. kodi 설정에서
+System -> Settings -> Appearance -> Skin -> Fonts -> Arial Based 
+System -> Settings -> Appearance -> International -> Language -> Korean
+
+* 폰트 추가하기
+바탕체, 굴림체 등을 /usr/share/fonts 에 copy
+# fc-cache -fv    ---적용
+# fc-list         ---폰트 확인
+
+* XautoLock 설치 및 설정하기
+#apt-get install xautolock
+
+- 5분 후에 자동 화면 잠김 설정, 아래 스크립트를 시작 프로그램으로 등록
+# vi /usr/local/transparentlock.sh
+--------------------------------------------
+#!/bin/sh
+xset s off
+xset s noblank
+xautolock -locker xtrlock -time 5
+--------------------------------------------
+- XFCE의 설정 → 전원관리 → 모니터 끄기 옵션을 모두 비활성화한 뒤 재시작
+- 설정, 키보드에서 Lock 단축키(Super-L) 명령으로 xautolock -locknow(즉시 Lock) 등록
+
+* NetworkManager(네트워크 연결 관리자)의 마지막 사용 일시를 "지금"으로 바꾸기 위한 방법
+# cd /var/lib/NaworkManager/
+# ls -al
+..
+timestamps ..파일을 null copy 진행.
+
+* RollOS의 특성상 USB의 마운트는 기본이나, 내장 DISK의 자동마운트가 필요함
+- Script를 작성(아래 스크립트)하여.. 시작 프로그램으로 등록 
+--------------------------------------------
+for i in $(lsblk -r |awk '{ print $1 }'|grep -v md |grep -v loop |grep -v sr |grep .*[[:digit:]]|sort|uniq;);
+do
+    if [ -z  "$(grep  $i /proc/mounts)" ]
+    then
+        mkdir -p /media/root/$i;
+        mount /dev/$i /media/root/$i
+    fi
+done
+--------------------------------------------
+- USB, Mobile 등 외부 연결 Device는 직접 실행하여 사용하는 것을 권장
